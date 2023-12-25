@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "154552002746",
+    "project_id": "installer-go",
+    "storage_bucket": "installer-go.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:154552002746:android:a77e1ccc2b512aa843ba83",
+        "android_client_info": {
+          "package_name": "com.baxramov.minegoinstallerforclient"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwCZY_LeoRUEuhnTgIR2sTOyHp1cqqVrs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
