@@ -1,10 +1,13 @@
 package com.baxramov.minegoinstallerforclient
 
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.storage.StorageManager
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.util.Log
@@ -16,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat.startActivity
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -26,14 +30,20 @@ import java.util.zip.ZipInputStream
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var extractButton: Button
+    private lateinit var progressBar: ProgressBar
+    private lateinit var textView: TextView
+
+
     private val pickDirectoryLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == AppCompatActivity.RESULT_OK) {
+            if (result.resultCode == RESULT_OK) {
                 result.data?.data?.also { uri ->
                     GlobalScope.launch(Dispatchers.IO) {
                         runOnUiThread {
                             toggleViewsVisibility(View.INVISIBLE, View.VISIBLE)
                         }
+
                         extractZip(uri)
                         runOnUiThread {
                             toggleViewsVisibility(View.VISIBLE, View.INVISIBLE)
@@ -42,10 +52,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-
-    private lateinit var extractButton: Button
-    private lateinit var progressBar: ProgressBar
-    private lateinit var textView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,22 +63,10 @@ class MainActivity : AppCompatActivity() {
 
         extractButton.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                checkAndRequestManageExternalStoragePermission()
+                requestStoragePermission()
             } else {
                 openDocumentTree()
             }
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun checkAndRequestManageExternalStoragePermission() {
-        if (!Environment.isExternalStorageManager()) {
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-            val uri = Uri.fromParts("package", packageName, null)
-            intent.data = uri
-            startActivity(intent)
-        } else {
-            openDocumentTree()
         }
     }
 
@@ -85,6 +79,56 @@ class MainActivity : AppCompatActivity() {
             )
         }
         pickDirectoryLauncher.launch(intent)
+    }
+
+    //Call anywhere in your main code
+    private fun requestStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            requestAllFilesPermission()
+            requestDocumentPermission("data")
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun requestAllFilesPermission() {
+        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+        intent.addCategory("android.intent.category.DEFAULT")
+        intent.data = Uri.fromParts("package", packageName, null)
+        startActivity(intent)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun requestDocumentPermission(folder: String) {
+        val storageManager = application.getSystemService(Context.STORAGE_SERVICE) as StorageManager
+        val intent = storageManager.primaryStorageVolume.createOpenDocumentTreeIntent()
+        val targetDirectory = "Android%2F$folder" // add your directory to be selected by the user
+        var uri = intent.getParcelableExtra<Uri>("android.provider.extra.INITIAL_URI") as Uri
+        var scheme = uri.toString()
+        scheme = scheme.replace("/root/", "/document/")
+        scheme += "%3A$targetDirectory"
+        uri = Uri.parse(scheme)
+        intent.putExtra("android.provider.extra.INITIAL_URI", uri)
+        startActivityForResult(intent, REQUEST_CODE)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == RESULT_OK && requestCode == REQUEST_CODE) {
+            if (data != null) {
+                data.data?.let { treeUri ->
+
+                    // treeUri is the Uri of the file
+
+                    // if lifelong access is required, use takePersistableUriPermission()
+                    contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    extractZip(treeUri)
+                }
+            }
+        }
     }
 
     private fun extractZip(destinationUri: Uri) {
@@ -121,7 +165,7 @@ class MainActivity : AppCompatActivity() {
                         val entryFile =
                             currentDir?.createFile("application/octet-stream", entryFilePath.last())
 
-                        entryFile?.let {
+                        entryFile?.let { it ->
                             val outputStream = contentResolver.openOutputStream(it.uri)
                             val buffer = ByteArray(4096)
                             var length: Int
@@ -183,5 +227,9 @@ class MainActivity : AppCompatActivity() {
         extractButton.visibility = buttonVisibility
         textView.visibility = progressBarAndTextViewVisibility
         progressBar.visibility = progressBarAndTextViewVisibility
+    }
+
+    companion object {
+        private const val REQUEST_CODE = 3106
     }
 }
